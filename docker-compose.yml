@@ -1,0 +1,133 @@
+version: '3.8'
+
+services:
+
+  discovery-service:
+    build:
+      context: ./discovery-service
+    container_name: discovery-service
+    ports:
+      - "8761:8761"
+    networks:
+      - app-network
+
+  usuario-db:
+    image: postgres:15
+    container_name: usuario-db
+    restart: always
+    environment:
+      POSTGRES_DB: ${USUARIO_DB_NAME}
+      POSTGRES_USER: ${USUARIO_DB_USER}
+      POSTGRES_PASSWORD: ${USUARIO_DB_PASSWORD}
+    volumes:
+      - usuario_data:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"
+    networks:
+      - app-network
+
+  usuario-service:
+    build:
+      context: ./user-service
+    container_name: user-service
+    restart: always
+    depends_on:
+      - usuario-db
+      - discovery-service
+      - gateway-service
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://usuario-db:5432/${USUARIO_DB_NAME}
+      SPRING_DATASOURCE_USERNAME: ${USUARIO_DB_USER}
+      SPRING_DATASOURCE_PASSWORD: ${USUARIO_DB_PASSWORD}
+      SPRING_JPA_HIBERNATE_DDL_AUTO: update
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://discovery-service:8761/eureka
+    ports:
+      - "8081:8081"
+    networks:
+      - app-network
+
+  gateway-service:
+    build:
+      context: ./gateway-service
+    container_name: gateway-service
+    restart: always
+    environment:
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://discovery-service:8761/eureka
+    ports:
+      - "8083:8083"
+    networks:
+      - app-network
+    depends_on:
+      - discovery-service
+
+  portifolio-db:
+    image: postgres:15
+    container_name: portifolio-db
+    environment:
+      POSTGRES_DB: ${PORTIFOLIO_DB_NAME}
+      POSTGRES_USER: ${PORTIFOLIO_DB_USER}
+      POSTGRES_PASSWORD: ${PORTIFOLIO_DB_PASSWORD}
+    volumes:
+      - portifolio_data:/var/lib/postgresql/data
+    ports:
+      - "5434:5432"
+    networks:
+      - app-network
+
+  portifolio-service:
+    build:
+      context: ./portifolio-service
+    container_name: portifolio-service
+    ports:
+      - "8084:8084"
+    depends_on:
+      - portifolio-db
+      - discovery-service
+      - gateway-service
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://portifolio-db:5432/${PORTIFOLIO_DB_NAME}
+      SPRING_DATASOURCE_USERNAME: ${PORTIFOLIO_DB_USER}
+      SPRING_DATASOURCE_PASSWORD: ${PORTIFOLIO_DB_PASSWORD}
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://discovery-service:8761/eureka
+      KEYCLOAK_AUTH_SERVER_URL: http://keycloak:8080
+    networks:
+      - app-network
+
+  keycloak-db:
+    image: postgres:15
+    container_name: keycloak-db
+    environment:
+      POSTGRES_DB: ${KEYCLOAK_DB_NAME}
+      POSTGRES_USER: ${KEYCLOAK_DB_USER}
+      POSTGRES_PASSWORD: ${KEYCLOAK_DB_PASSWORD}
+    volumes:
+      - keycloak_data:/var/lib/postgresql/data
+    networks:
+      - app-network
+
+  keycloak:
+    image: keycloak/keycloak:26.2
+    container_name: keycloak
+    command: start-dev
+    environment:
+      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://keycloak-db:5432/${KEYCLOAK_DB_NAME}
+      KC_DB_USERNAME: ${KEYCLOAK_DB_USER}
+      KC_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD}
+    ports:
+      - "8082:8080"
+    depends_on:
+      - keycloak-db
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge
+
+volumes:
+  usuario_data:
+  portifolio_data:
+  keycloak_data:
